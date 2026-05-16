@@ -13,9 +13,9 @@
 #include <DHT.h>
 #include <ArduinoJson.h> // Make sure to install ArduinoJson library in Arduino IDE
 
-const char* ssid = "YOUR_WIFI_SSID";
-const char* password = "YOUR_WIFI_PASSWORD";
-const char* serverUrl = "https://YOUR-APP-URL.vercel.app/api/update";
+const char* ssid = "Kocak";
+const char* password = "11223344";
+const char* serverUrl = "https://quiz-olp8lnkqi-delawinandas-projects.vercel.app/api/update";
 
 #define DHTPIN 4
 #define DHTTYPE DHT11
@@ -29,7 +29,7 @@ void setup() {
   
   for(int i=0; i<4; i++) {
     pinMode(relayPins[i], OUTPUT);
-    digitalWrite(relayPins[i], LOW); // Start with all OFF
+    digitalWrite(relayPins[i], HIGH); // Start with all OFF (Active Low logic)
   }
 
   WiFi.begin(ssid, password);
@@ -64,10 +64,11 @@ void loop() {
       deserializeJson(resDoc, response);
 
       // Apply Relay Status from Server to Physical Pins
+      // Logic: Active Low (True/ON = LOW, False/OFF = HIGH)
       JsonArray relays = resDoc["relays"];
       for (int i = 0; i < 4; i++) {
         bool state = relays[i];
-        digitalWrite(relayPins[i], state ? HIGH : LOW);
+        digitalWrite(relayPins[i], state ? LOW : HIGH); 
       }
       Serial.println("Relays updated from server");
     } else {

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   BarChart3, 
   Power, 
@@ -18,7 +18,10 @@ import {
   Bell, 
   Settings, 
   LayoutDashboard,
-  HardDrive
+  HardDrive,
+  Mic,
+  MicOff,
+  Play
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -77,6 +80,11 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [toasts, setToasts] = useState<{ id: number; message: string; type: 'success' | 'error' | 'info' }[]>([]);
 
+  // Voice & Loop Features
+  const [isListening, setIsListening] = useState(false);
+  const [loopActive, setLoopActive] = useState(false);
+  const loopIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
   // Real-time Clock
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -126,6 +134,72 @@ export default function App() {
     } catch (error) {
       addToast("Failed to toggle relay", "error");
     }
+  };
+
+  // Sequential Loop Logic
+  useEffect(() => {
+    if (loopActive) {
+      let currentIdx = 0;
+      addToast("Sequential Loop Started", "info");
+      
+      loopIntervalRef.current = setInterval(async () => {
+        // Sequence: Turn current ON, others OFF
+        for (let i = 0; i < 4; i++) {
+          await fetch(`/api/relay/${i + 1}/${i === currentIdx ? 'on' : 'off'}`);
+        }
+        currentIdx = (currentIdx + 1) % 4;
+        fetchData();
+      }, 3000);
+    } else {
+      if (loopIntervalRef.current) {
+        clearInterval(loopIntervalRef.current);
+        addToast("Sequential Loop Stopped", "info");
+      }
+    }
+    return () => {
+      if (loopIntervalRef.current) clearInterval(loopIntervalRef.current);
+    };
+  }, [loopActive]);
+
+  // Voice Recognition Logic
+  const startVoiceControl = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      addToast("Browser tidak mendukung Speech Recognition", "error");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'id-ID';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    recognition.onstart = () => setIsListening(true);
+    recognition.onend = () => setIsListening(false);
+    
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript.toLowerCase();
+      addToast(`Suara: "${transcript}"`, "info");
+      
+      // Parse commands (Indonesian)
+      const action = transcript.includes('nyala') || transcript.includes('on') || transcript.includes('hidup') ? 'on' : 
+                     transcript.includes('mati') || transcript.includes('off') ? 'off' : null;
+
+      const relayMatch = transcript.match(/relay\s?(\d+|satu|dua|tiga|empat)/) || 
+                         transcript.match(/lampu\s?(\d+|satu|dua|tiga|empat)/);
+
+      if (relayMatch && action) {
+        const textToNum: Record<string, number> = { 'satu': 1, 'dua': 2, 'tiga': 3, 'empat': 4 };
+        const idStr = relayMatch[1];
+        const id = textToNum[idStr] || parseInt(idStr);
+        if (id >= 1 && id <= 4) {
+          fetch(`/api/relay/${id}/${action}`).then(() => fetchData());
+          addToast(`Voice: Relay ${id} ${action}`, "success");
+        }
+      }
+    };
+
+    recognition.start();
   };
 
   const chartData = useMemo(() => ({
@@ -251,8 +325,8 @@ export default function App() {
             {/* Stats Overview */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
               {[
-                { label: 'Temperature', value: `${status?.sensor.temp}°C`, trend: '+0.2%', trendUp: true },
-                { label: 'Humidity', value: `${status?.sensor.humidity}%`, trend: '-1.4%', trendUp: false },
+                { label: 'Temperature', value: `${status?.sensor?.temp ?? '--'}°C`, trend: '+0.2%', trendUp: true },
+                { label: 'Humidity', value: `${status?.sensor?.humidity ?? '--'}%`, trend: '-1.4%', trendUp: false },
                 { label: 'ESP32 Latency', value: '12ms', trend: 'Stable', isStatic: true },
                 { label: 'API Requests', value: '1.2k', trend: 'Last 24h', isStatic: true }
               ].map((stat, idx) => (
@@ -316,6 +390,47 @@ export default function App() {
                       </div>
                     </motion.button>
                   ))}
+                </div>
+
+                {/* Special Modes Section */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="glass-panel p-4 flex items-center justify-between border-cyan-500/20">
+                     <div className="flex items-center gap-4">
+                       <div className={cn("p-3 rounded-xl", loopActive ? "bg-cyan-500/20 text-cyan-400" : "bg-white/5 text-white/20")}>
+                         <Play size={20} className={cn(loopActive && "animate-pulse")} />
+                       </div>
+                       <div>
+                         <p className="text-xs font-bold uppercase tracking-widest leading-none mb-1">Mode Variasi</p>
+                         <p className="text-[10px] text-white/40 font-mono">Looping Ch 1 → 4</p>
+                       </div>
+                     </div>
+                     <button 
+                       onClick={() => setLoopActive(!loopActive)}
+                       className={cn("px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all", 
+                       loopActive ? "bg-cyan-500 text-white shadow-lg shadow-cyan-500/20" : "bg-white/5 text-white/40 hover:bg-white/10")}
+                     >
+                       {loopActive ? 'Nonaktifkan' : 'Aktifkan'}
+                     </button>
+                  </div>
+                  <div className="glass-panel p-4 flex items-center justify-between border-cyan-500/20">
+                     <div className="flex items-center gap-4">
+                       <div className={cn("p-3 rounded-xl", isListening ? "bg-cyan-500/20 text-cyan-400" : "bg-white/5 text-white/20")}>
+                         <Mic size={20} className={cn(isListening && "animate-bounce")} />
+                       </div>
+                       <div>
+                         <p className="text-xs font-bold uppercase tracking-widest leading-none mb-1">Kontrol Suara</p>
+                         <p className="text-[10px] text-white/40 font-mono">{isListening ? 'Mendengarkan...' : 'Siap'}</p>
+                       </div>
+                     </div>
+                     <button 
+                       onClick={startVoiceControl}
+                       disabled={isListening}
+                       className={cn("px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all", 
+                       isListening ? "bg-cyan-500/30 text-cyan-100 cursor-not-allowed" : "bg-white/5 text-white/40 hover:bg-white/10")}
+                     >
+                       {isListening ? 'Aktif' : 'Mulai'}
+                     </button>
+                  </div>
                 </div>
 
                 {/* Sensor Chart */}
@@ -413,6 +528,23 @@ export default function App() {
       {/* Floating Status / Toasts */}
       <div className="fixed bottom-6 right-6 flex flex-col gap-2 pointer-events-none z-50">
         <AnimatePresence>
+          {isListening && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="glass-panel bg-cyan-500/20 border-cyan-500/40 px-6 py-4 rounded-2xl flex items-center gap-4 mb-2 shadow-2xl backdrop-blur-xl"
+            >
+              <div className="relative">
+                <Mic className="text-cyan-400 animate-pulse" size={24} />
+                <div className="absolute inset-0 bg-cyan-400/20 rounded-full animate-ping"></div>
+              </div>
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-widest text-cyan-100">Voice Listener Active</p>
+                <p className="text-[10px] text-white/60 font-mono italic">Katakan "Relay 1 Nyala"</p>
+              </div>
+            </motion.div>
+          )}
           {toasts.map(toast => (
             <motion.div
               layout

@@ -37,6 +37,18 @@ if (!isPlaceholderToken && BOT_TOKEN) {
       telegramLogs.unshift(`[${new Date().toLocaleTimeString()}] Command /status from ${msg.from?.username}`);
     });
 
+    bot.onText(/\/relay(\d)_(on|off)/, (msg, match) => {
+      if (match) {
+        const id = parseInt(match[1]) - 1;
+        const state = match[2] === "on";
+        if (id >= 0 && id < 4) {
+          relayStatus[id] = state;
+          bot?.sendMessage(msg.chat.id, `Relay ${id+1} is now ${state ? 'ON' : 'OFF'}`);
+          telegramLogs.unshift(`[${new Date().toLocaleTimeString()}] Bot: relay${id+1}_${match[2]} from ${msg.from?.username}`);
+        }
+      }
+    });
+
     bot.on('polling_error', (error: any) => {
         if (error.code === 'ETELEGRAM' && error.message.includes('409 Conflict')) {
           botStatus = "online (conflict)";
