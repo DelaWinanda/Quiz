@@ -1,0 +1,6 @@
+{
+  "name": "SmartHome IoT Dashboard Pro",
+  "description": "Professional modern IoT dashboard for ESP32 with relay control, DHT11 monitoring, and Telegram Bot integration.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
