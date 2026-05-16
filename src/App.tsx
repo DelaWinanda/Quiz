@@ -282,7 +282,7 @@ export default function App() {
               <section className="lg:col-span-3 flex flex-col gap-4 overflow-hidden">
                 {/* Relay Cards Grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                  {status?.relays.map((isOn, idx) => (
+                  {(status?.relays || [false, false, false, false]).map((isOn, idx) => (
                     <motion.button
                       key={idx}
                       onClick={() => toggleRelay(idx + 1, isOn)}
@@ -350,12 +350,12 @@ export default function App() {
                     <span className="text-[10px] font-mono text-cyan-400 cursor-pointer hover:underline">View Historical</span>
                   </div>
                   <div className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-hide">
-                    {status?.logs.telegram.length === 0 && (
+                    {(!status || status?.logs?.telegram?.length === 0) && (
                       <div className="log-entry border-white/10 opacity-30">
                         <span className="mr-2">SYNC</span> System awaiting gateway data...
                       </div>
                     )}
-                    {status?.logs.telegram.map((log, i) => (
+                    {status?.logs?.telegram?.map((log, i) => (
                       <motion.div
                         initial={{ opacity: 0, x: 10 }}
                         animate={{ opacity: 1, x: 0 }}
@@ -370,7 +370,7 @@ export default function App() {
                     ))}
                     
                     {/* Simulated system logs to fill if telegram is empty */}
-                    {status?.logs.telegram.length === 0 && (
+                    {status?.logs?.telegram?.length === 0 && (
                       <>
                         <div className="log-entry border-white/20">
                           <span className="text-white/30 mr-2">09:16:00</span> [CORE] Gateway initialized
