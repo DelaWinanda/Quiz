@@ -11,6 +11,7 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <DHT.h>
+#include <ArduinoJson.h> // Make sure to install ArduinoJson library in Arduino IDE
 
 const char* ssid = "YOUR_WIFI_SSID";
 const char* password = "YOUR_WIFI_PASSWORD";
@@ -28,7 +29,7 @@ void setup() {
   
   for(int i=0; i<4; i++) {
     pinMode(relayPins[i], OUTPUT);
-    digitalWrite(relayPins[i], LOW);
+    digitalWrite(relayPins[i], LOW); // Start with all OFF
   }
 
   WiFi.begin(ssid, password);
@@ -44,20 +45,36 @@ void loop() {
     float h = dht.readHumidity();
     float t = dht.readTemperature();
 
-    if (!isnan(h) && !isnan(t)) {
-      HTTPClient http;
-      http.begin(serverUrl);
-      http.addHeader("Content-Type", "application/json");
+    // Even if DHT fails, we still want to poll for relay signals
+    StaticJsonDocument<200> doc;
+    doc["temp"] = isnan(t) ? 0 : t;
+    doc["humidity"] = isnan(h) ? 0 : h;
+    String json;
+    serializeJson(doc, json);
 
-      String json = "{\"temp\":" + String(t) + ",\"humidity\":" + String(h) + "}";
-      int httpResponseCode = http.POST(json);
+    HTTPClient http;
+    http.begin(serverUrl);
+    http.addHeader("Content-Type", "application/json");
 
-      if (httpResponseCode > 0) {
-        Serial.print("Data sent, code: ");
-        Serial.println(httpResponseCode);
+    int httpResponseCode = http.POST(json);
+
+    if (httpResponseCode == 200) {
+      String response = http.getString();
+      StaticJsonDocument<500> resDoc;
+      deserializeJson(resDoc, response);
+
+      // Apply Relay Status from Server to Physical Pins
+      JsonArray relays = resDoc["relays"];
+      for (int i = 0; i < 4; i++) {
+        bool state = relays[i];
+        digitalWrite(relayPins[i], state ? HIGH : LOW);
       }
-      http.end();
+      Serial.println("Relays updated from server");
+    } else {
+      Serial.print("Error code: ");
+      Serial.println(httpResponseCode);
     }
+    http.end();
   }
-  delay(5000); // Send data every 5 seconds
+  delay(3000); // Check every 3 seconds for fast response
 }

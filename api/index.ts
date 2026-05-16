@@ -78,17 +78,22 @@ app.get("/api/relay/:id/:state", (req, res) => {
 
 app.get("/api/dht/history", (req, res) => res.json(sensorHistory));
 
-// Endpoint for ESP32 to push data
+// Endpoint for ESP32 to push data and get relay status simultaneously
 app.post("/api/update", (req, res) => {
     const { temp, humidity } = req.body;
+    
+    // Update sensors
     if (temp !== undefined && humidity !== undefined) {
         sensorData = { temp, humidity, lastUpdate: new Date().toISOString() };
         sensorHistory.push({ ...sensorData });
         if (sensorHistory.length > 50) sensorHistory.shift();
-        res.json({ success: true });
-    } else {
-        res.status(400).json({ error: "Missing data" });
     }
+
+    // Always return the current relay status so ESP32 knows what to do
+    res.json({ 
+        success: true, 
+        relays: relayStatus 
+    });
 });
 
 export default app;
